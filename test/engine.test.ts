@@ -30,17 +30,19 @@ describe('engine balance, report, goals, undo, reset', () => {
     const friday = await say(store, 'save 5000 for Friday');
     expect(friday).toContain('Set aside *PKR 5,000*');
     expect(friday).toContain('Available to spend: *PKR 39,650*');
-    expect(friday).toContain('5 days to go');
-    expect(friday).toContain('*PKR 7,930*');
+    expect(friday).toContain('Safe daily limit: *PKR 7,930* · 5 days to');
 
     const wedding = await say(store, 'save 3000 for 2026-10-15 wedding');
     expect(wedding).toContain('Available to spend: *PKR 36,650*');
-    expect(wedding).toContain('18 days to go');
-    expect(wedding).toContain('*PKR 2,036.11*');
+    expect(wedding).toContain('Safe daily limit: *PKR 2,313* · 18 days to');
 
     const goals = await say(store, 'goals');
     expect(goals).toContain('1. Friday');
     expect(goals).toContain('2. wedding');
+    expect(goals).toContain('Safe daily limit: *PKR 2,313* · 18 days to');
+    expect(goals).not.toContain('7,330');
+    const balance = await say(store, 'balance');
+    expect(balance).toContain('Safe daily limit: *PKR 2,313* · 18 days to');
     expect(await say(store, 'delete goal 2')).toContain('Removed goal 2 (wedding');
     expect(await say(store, 'goals')).not.toContain('wedding');
   });
@@ -51,7 +53,8 @@ describe('engine balance, report, goals, undo, reset', () => {
     await say(store, 'save 9000 for 2026-09-30');
     const reply = await say(store, '400 food lunch');
     expect(reply).toContain('over the safe daily limit');
-    expect(reply).toContain('*PKR 333.33*');
+    expect(reply).toContain('Safe daily limit: *PKR 200*');
+    expect(reply).not.toContain('333');
   });
 
   it('undoes an expense, a goal, and a deleted goal', async () => {

@@ -1,5 +1,5 @@
 import type { Category } from './types.js';
-import { floorMoney, roundMoney } from './money.js';
+import { floorToUnit, roundMoney } from './money.js';
 import { daysBetween } from './dates.js';
 
 export interface BalanceEvent {
@@ -103,20 +103,53 @@ export interface GoalPlan {
   reserved: number;
   available: number;
   goals: PlannedGoal[];
+  /** Smallest per-goal cap. Null when there is nothing to pace. */
   safeDailyLimit: number | null;
+  /** Goal whose cap is the safe daily limit. */
   horizonDate: string | null;
   horizonDays: number | null;
+  /** Unused portion of today's cap. Null when there is no cap. */
+  leftToday: number | null;
+  overToday: boolean;
 }
 
-export function planGoals(balance: number, goals: GoalInput[], today: string, todaySpend = 0): GoalPlan {
+export interface PlanOptions {
+  /** Spending already logged today. Compared with the cap; it is not added back into it. */
+  todaySpend?: number;
+  /** Smallest money step. 1 for whole rupees, 0.01 for cents. */
+  unit?: number;
+}
+
+const EMPTY_PLAN: Pick<GoalPlan, 'safeDailyLimit' | 'horizonDate' | 'horizonDays' | 'leftToday' | 'overToday'> = {
+  safeDailyLimit: null,
+  horizonDate: null,
+  horizonDays: null,
+  leftToday: null,
+  overToday: false,
+};
+
+/**
+ * Safe daily limit.
+ *
+ * Balance is what you have now (today's spending is already subtracted).
+ * A reserve cannot be spent before its date. For each goal, hold back every
+ * reserve due on that date or later, divide the rest by the days until then,
+ * and round down to `unit`. The safe daily limit is the smallest of those caps.
+ * Spending that amount every day leaves each reserve intact until its date.
+ * `todaySpend` only decides whether today is already over that same cap.
+ */
+export function planGoals(balance: number, goals: GoalInput[], today: string, options: PlanOptions = {}): GoalPlan {
+  const todaySpend = options.todaySpend ?? 0;
+  const unit = options.unit ?? 0.01;
   const reserved = roundMoney(goals.reduce((sum, goal) => sum + goal.amount, 0));
   const available = roundMoney(balance - reserved);
-  // Today's expenses are already out of the balance. Add them back so the daily
-  // limit stays the full day's budget and does not shrink after each expense.
-  const spendable = Math.max(0, roundMoney(available + todaySpend));
   const planned = goals.map((goal) => {
     const daysUntil = daysBetween(today, goal.targetDate);
-    const divisor = daysUntil > 0 ? daysUntil : 1;
+    const protectedAmount = roundMoney(
+      goals.filter((other) => other.targetDate >= goal.targetDate).reduce((sum, other) => sum + other.amount, 0),
+    );
+    const spendable = Math.max(0, roundMoney(balance - protectedAmount));
+    const days = daysUntil > 0 ? daysUntil : 1;
     return {
       amount: goal.amount,
       targetDate: goal.targetDate,
@@ -124,42 +157,59 @@ export function planGoals(balance: number, goals: GoalInput[], today: string, to
       daysUntil,
       overdue: daysUntil < 0,
       dueToday: daysUntil === 0,
-      dailyLimit: floorMoney(spendable / divisor),
+      dailyLimit: floorToUnit(spendable / days, unit),
       feasible: balance + 0.001 >= goal.amount,
     };
   });
 
-  if (planned.length === 0) {
-    return {
-      reserved,
-      available,
-      goals: planned,
-      safeDailyLimit: null,
-      horizonDate: null,
-      horizonDays: null,
-    };
+  const pacing = planned.filter((goal) => goal.daysUntil > 0);
+  const dueToday = planned.filter((goal) => goal.daysUntil === 0);
+  const pool = pacing.length > 0 ? pacing : dueToday;
+  if (pool.length === 0) {
+    if (planned.length === 0) {
+      return { reserved, available, goals: planned, ...EMPTY_PLAN };
+    }
+    const limit = floorToUnit(Math.max(0, available), unit);
+    return finishPlan({ reserved, available, goals: planned, limit, horizonDate: null, horizonDays: null, todaySpend, unit });
   }
 
-  const upcoming = planned.filter((goal) => goal.daysUntil >= 0);
-  if (upcoming.length === 0) {
-    return {
-      reserved,
-      available,
-      goals: planned,
-      safeDailyLimit: floorMoney(spendable),
-      horizonDate: null,
-      horizonDays: null,
-    };
-  }
-
-  const nearest = upcoming.reduce((best, goal) => (goal.daysUntil < best.daysUntil ? goal : best));
-  const divisor = nearest.daysUntil > 0 ? nearest.daysUntil : 1;
-  return {
+  const binding = pool.reduce((best, goal) => {
+    if (goal.dailyLimit < best.dailyLimit) return goal;
+    if (goal.dailyLimit === best.dailyLimit && goal.daysUntil < best.daysUntil) return goal;
+    return best;
+  });
+  return finishPlan({
     reserved,
     available,
     goals: planned,
-    safeDailyLimit: floorMoney(spendable / divisor),
-    horizonDate: nearest.targetDate,
-    horizonDays: nearest.daysUntil,
+    limit: binding.dailyLimit,
+    horizonDate: binding.targetDate,
+    horizonDays: binding.daysUntil,
+    todaySpend,
+    unit,
+  });
+}
+
+function finishPlan(input: {
+  reserved: number;
+  available: number;
+  goals: PlannedGoal[];
+  limit: number;
+  horizonDate: string | null;
+  horizonDays: number | null;
+  todaySpend: number;
+  unit: number;
+}): GoalPlan {
+  const overToday = input.todaySpend > input.limit + input.unit / 10;
+  const leftToday = overToday ? 0 : floorToUnit(Math.max(0, input.limit - input.todaySpend), input.unit);
+  return {
+    reserved: input.reserved,
+    available: input.available,
+    goals: input.goals,
+    safeDailyLimit: input.limit,
+    horizonDate: input.horizonDate,
+    horizonDays: input.horizonDays,
+    leftToday,
+    overToday,
   };
 }

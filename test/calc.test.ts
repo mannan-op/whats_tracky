@@ -61,14 +61,29 @@ describe('buildReport', () => {
 });
 
 describe('planGoals', () => {
-  it('reserves money and divides what is left by the days until the nearest goal', () => {
-    const friday = planGoals(44650, [{ amount: 5000, targetDate: '2026-10-02', label: 'Friday' }], '2026-09-27');
+  it('sets a single-goal cap to the unreserved balance divided by the days, rounded down', () => {
+    // 27 Sep → 2 Oct is 5 days. Spendable = 44,650 − 5,000 = 39,650.
+    // 39,650 / 5 = 7,930. 7,930 × 5 = 39,650, so the reserve is untouched.
+    const friday = planGoals(
+      44650,
+      [{ amount: 5000, targetDate: '2026-10-02', label: 'Friday' }],
+      '2026-09-27',
+      { unit: 1 },
+    );
     expect(friday.reserved).toBe(5000);
     expect(friday.available).toBe(39650);
     expect(friday.horizonDays).toBe(5);
     expect(friday.safeDailyLimit).toBe(7930);
     expect(friday.goals[0]?.dailyLimit).toBe(7930);
+    expect(friday.overToday).toBe(false);
+    expect(friday.leftToday).toBe(7930);
+  });
 
+  it('uses the strictest goal when a later reserve must also survive', () => {
+    // Friday, 5 days: hold 8,000, spendable 36,650, floor(36,650 / 5) = 7,330.
+    // Wedding, 18 days: hold only the 3,000 still due then (Friday's 5,000 can be used after 2 Oct).
+    // Spendable 41,650, floor(41,650 / 18) = 2,313. 2,313 × 18 = 41,634 ≤ 41,650.
+    // Strictest cap is 2,313. Today's 5,350 is already over it.
     const both = planGoals(
       44650,
       [
@@ -76,22 +91,49 @@ describe('planGoals', () => {
         { amount: 3000, targetDate: '2026-10-15', label: 'wedding' },
       ],
       '2026-09-27',
+      { unit: 1, todaySpend: 5350 },
     );
     expect(both.reserved).toBe(8000);
     expect(both.available).toBe(36650);
-    expect(both.horizonDate).toBe('2026-10-02');
-    expect(both.safeDailyLimit).toBe(7330);
-    expect(both.goals.find((goal) => goal.label === 'wedding')?.dailyLimit).toBe(2036.11);
+    expect(both.goals.find((goal) => goal.label === 'Friday')?.dailyLimit).toBe(7330);
+    expect(both.goals.find((goal) => goal.label === 'wedding')?.dailyLimit).toBe(2313);
+    expect(both.safeDailyLimit).toBe(2313);
+    expect(both.horizonDate).toBe('2026-10-15');
+    expect(both.horizonDays).toBe(18);
+    expect(both.overToday).toBe(true);
+    expect(both.leftToday).toBe(0);
   });
 
-  it('keeps the daily limit stable after spending already counted in the balance', () => {
-    const plan = planGoals(9600, [{ amount: 9000, targetDate: '2026-09-30', label: 'Savings' }], '2026-09-27', 400);
-    expect(plan.available).toBe(600);
-    expect(plan.safeDailyLimit).toBe(333.33);
+  it('counts spending already done today against the cap and does not add it back', () => {
+    // Balance 9,600 already excludes today's 400. Reserve 9,000. 27 Sep → 30 Sep is 3 days.
+    // Spendable = 600. floor(600 / 3) = 200. 200 × 3 = 600.
+    // Putting the 400 back would show floor(1,000 / 3) = 333, and 333 × 3 exceeds the 600 left.
+    const over = planGoals(
+      9600,
+      [{ amount: 9000, targetDate: '2026-09-30', label: 'Savings' }],
+      '2026-09-27',
+      { todaySpend: 400, unit: 1 },
+    );
+    expect(over.available).toBe(600);
+    expect(over.safeDailyLimit).toBe(200);
+    expect(over.overToday).toBe(true);
+    expect(over.leftToday).toBe(0);
+
+    const under = planGoals(
+      9600,
+      [{ amount: 9000, targetDate: '2026-09-30', label: 'Savings' }],
+      '2026-09-27',
+      { todaySpend: 100, unit: 1 },
+    );
+    expect(under.safeDailyLimit).toBe(200);
+    expect(under.overToday).toBe(false);
+    expect(under.leftToday).toBe(100);
   });
 
   it('marks an unaffordable goal and a zero daily limit', () => {
-    const plan = planGoals(1000, [{ amount: 5000, targetDate: '2026-10-02', label: 'Friday' }], '2026-09-27');
+    const plan = planGoals(1000, [{ amount: 5000, targetDate: '2026-10-02', label: 'Friday' }], '2026-09-27', {
+      unit: 1,
+    });
     expect(plan.available).toBe(-4000);
     expect(plan.safeDailyLimit).toBe(0);
     expect(plan.goals[0]?.feasible).toBe(false);

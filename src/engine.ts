@@ -5,6 +5,7 @@ import type { AppConfig } from './config.js';
 import type { Store } from './db.js';
 import { addDays, formatPrettyDate, formatStamp, localDate, monthTitle, periodStart } from './dates.js';
 import { bold, formatMoney, lines } from './format.js';
+import { currencyUnit } from './money.js';
 import { adviceKeepsFigures, type Llm } from './llm.js';
 import type { Category, GoalRow, Intent, LedgerRow, Period } from './types.js';
 
@@ -44,27 +45,29 @@ function takeSnapshot(ctx: EngineContext, userId: string): Snapshot {
     balance,
     goals.map((goal) => ({ amount: goal.amount, targetDate: goal.targetDate, label: goal.label })),
     today,
-    todaySpend,
+    { todaySpend, unit: currencyUnit(ctx.config.currency) },
   );
   return { ledger, goals, balance, today, todaySpend, plan };
 }
 
-function limitLine(plan: GoalPlan, currency: string, timeZone: string): string | null {
+function describeLimit(plan: GoalPlan, currency: string, timeZone: string, todaySpend: number): string | null {
   if (plan.safeDailyLimit === null) return null;
+  let line = `Safe daily limit: ${money(plan.safeDailyLimit, currency)}`;
   if (plan.horizonDate && plan.horizonDays !== null && plan.horizonDays > 0) {
     const when = formatPrettyDate(plan.horizonDate, timeZone);
-    return `Safe per day until ${when}: ${money(plan.safeDailyLimit, currency)} · ${plan.horizonDays} ${dayWord(plan.horizonDays)}`;
+    line = `${line} · ${plan.horizonDays} ${dayWord(plan.horizonDays)} to ${when}`;
+  } else if (plan.horizonDays === 0) {
+    line = `${line} · due today`;
   }
-  if (plan.horizonDays === 0) {
-    return `A goal is due today. Safe to spend today: ${money(plan.safeDailyLimit, currency)}`;
+  if (todaySpend > 0 && plan.leftToday !== null && !plan.overToday) {
+    line += `\n${money(plan.leftToday, currency)} of that is left today (${money(todaySpend, currency)} already spent).`;
   }
-  return `Safe to spend: ${money(plan.safeDailyLimit, currency)}`;
+  return line;
 }
 
 function overLimitLine(snapshot: Snapshot, currency: string): string | null {
-  const limit = snapshot.plan.safeDailyLimit;
-  if (limit === null || snapshot.todaySpend <= limit + 0.001) return null;
-  return `Heads up: today is ${money(snapshot.todaySpend, currency)}, over the safe daily limit of ${money(limit, currency)}.`;
+  if (!snapshot.plan.overToday || snapshot.plan.safeDailyLimit === null) return null;
+  return `Heads up: today is ${money(snapshot.todaySpend, currency)}, over the safe daily limit of ${money(snapshot.plan.safeDailyLimit, currency)}.`;
 }
 
 function fundsHint(snapshot: Snapshot): string | null {
@@ -79,7 +82,7 @@ function balanceBlock(snapshot: Snapshot, currency: string, timeZone: string): s
     parts.push(
       `Available: ${money(snapshot.plan.available, currency)} (reserved ${money(snapshot.plan.reserved, currency)})`,
     );
-    const limit = limitLine(snapshot.plan, currency, timeZone);
+    const limit = describeLimit(snapshot.plan, currency, timeZone, snapshot.todaySpend);
     if (limit) parts.push(limit);
   }
   const warn = overLimitLine(snapshot, currency);
@@ -292,12 +295,9 @@ function addGoal(userId: string, amount: number, targetDate: string, label: stri
     parts.push(`That date has already passed. It stays reserved until you delete it.`);
   } else if (days === 0) {
     parts.push(`Due today. Leave ${money(amount, currency)} untouched.`);
-  } else {
-    const daily = planned?.dailyLimit ?? 0;
-    parts.push(
-      `${days} ${dayWord(days)} to go. Keep daily spending around ${money(daily, currency)} and this reserve stays untouched.`,
-    );
   }
+  const limitLine = describeLimit(snapshot.plan, currency, ctx.config.tz, snapshot.todaySpend);
+  if (limitLine) parts.push(limitLine);
   const warn = overLimitLine(snapshot, currency);
   if (warn) parts.push(warn);
   return parts.join('\n');
@@ -310,7 +310,7 @@ function goalsReply(snapshot: Snapshot, currency: string, timeZone: string): str
   const rows = snapshot.plan.goals.map((goal, index) => {
     const when = formatPrettyDate(goal.targetDate, timeZone);
     const whenText = goal.overdue ? `${when} (overdue)` : goal.dueToday ? `${when} (today)` : `${when} (${goal.daysUntil} ${dayWord(goal.daysUntil)})`;
-    return `${index + 1}. ${goal.label} — ${money(goal.amount, currency)} — ${whenText} · daily ${money(goal.dailyLimit, currency)}`;
+    return `${index + 1}. ${goal.label} — ${money(goal.amount, currency)} — ${whenText}`;
   });
   return lines(
     '*Goals*',
@@ -318,6 +318,7 @@ function goalsReply(snapshot: Snapshot, currency: string, timeZone: string): str
     ...rows,
     '',
     `Reserved ${money(snapshot.plan.reserved, currency)} · available ${money(snapshot.plan.available, currency)}`,
+    describeLimit(snapshot.plan, currency, timeZone, snapshot.todaySpend),
   );
 }
 
@@ -347,7 +348,7 @@ function balanceReply(snapshot: Snapshot, currency: string, timeZone: string): s
   if (snapshot.goals.length > 0) {
     parts.push(`Reserved: ${money(snapshot.plan.reserved, currency)}`);
     parts.push(`Available to spend: ${money(snapshot.plan.available, currency)}`);
-    const limit = limitLine(snapshot.plan, currency, timeZone);
+    const limit = describeLimit(snapshot.plan, currency, timeZone, snapshot.todaySpend);
     if (limit) parts.push(limit);
   }
   if (snapshot.todaySpend > 0 || snapshot.plan.safeDailyLimit !== null) {
