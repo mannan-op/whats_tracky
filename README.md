@@ -157,7 +157,7 @@ For each goal, hold back every reserve due on that date or later (you may use an
 
 In the sample, after `save 5000 for Friday` the spendable money is 44,650 − 5,000 = 39,650 over 4 days. 39,650 / 4 rounds down to 9,912, and 9,912 × 4 = 39,648, which leaves the 5,000 reserve. Today already used 5,350 of the cap, so 4,562 is left today.
 
-After the wedding goal, Friday's own cap is (44,650 − 8,000) / 4 = 9,162. The wedding cap is (44,650 − 3,000) / 17 = 2,450, because the Friday money can be spent after Fri 2 Oct. The safe daily limit is the smaller one, 2,450. 2,450 × 17 = 41,650, the balance minus the 3,000 that must still be there on 15 Oct. Today's 5,350 is over 2,450, so the goal reply, `goals`, `balance`, and `advice` all say 2,450.
+After the wedding goal, Friday's own cap is 36,650 / 4, which rounds down to 9,162. The wedding cap is (44,650 − 3,000) / 17 = 2,450, because the Friday money can be spent after Fri 2 Oct. The safe daily limit is the smaller one, 2,450. 2,450 × 17 = 41,650, the balance minus the 3,000 that must still be there on 15 Oct. Today's 5,350 is over 2,450, so the goal reply, `goals`, `balance`, and `advice` all say 2,450.
 
 `6000 clothes` lowers the balance to 38,650. The same function then returns (38,650 − 3,000) / 17 rounded down to 2,097, and the warning uses 2,097.
 
