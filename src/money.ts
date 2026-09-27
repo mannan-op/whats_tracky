@@ -4,8 +4,19 @@ export function roundMoney(amount: number): number {
   return Math.round((amount + Number.EPSILON) * 100) / 100;
 }
 
-export function floorMoney(amount: number): number {
-  return Math.floor(amount * 100 + 1e-8) / 100;
+/** PKR is shown and capped in whole rupees. Other currencies keep cents. */
+export function currencyUnit(currency: string): number {
+  return currency.trim().toUpperCase() === 'PKR' ? 1 : 0.01;
+}
+
+export function quantize(amount: number, currency: string): number {
+  const unit = currencyUnit(currency);
+  return roundMoney(Math.round((amount + Number.EPSILON) / unit) * unit);
+}
+
+export function floorToUnit(amount: number, unit: number): number {
+  if (!(unit > 0)) return roundMoney(amount);
+  return roundMoney(Math.floor(amount / unit + 1e-8) * unit);
 }
 
 export function parseAmountToken(token: string, options?: { allowZero?: boolean }): number | null {

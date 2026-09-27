@@ -56,7 +56,8 @@ Set aside *PKR 5,000* for Fri 2 Oct.
 Balance: *PKR 44,650*
 Reserved: *PKR 5,000*
 Available to spend: *PKR 39,650*
-4 days to go. Keep daily spending around *PKR 11,250* and this reserve stays untouched.
+Safe daily limit: *PKR 9,912* · 4 days to Fri 2 Oct
+*PKR 4,562* of that is left today (*PKR 5,350* already spent).
 
 you> save 3000 for 2026-10-15 wedding
 Set aside *PKR 3,000* for Thu 15 Oct.
@@ -64,38 +65,34 @@ Set aside *PKR 3,000* for Thu 15 Oct.
 Balance: *PKR 44,650*
 Reserved: *PKR 8,000*
 Available to spend: *PKR 36,650*
-17 days to go. Keep daily spending around *PKR 2,470.58* and this reserve stays untouched.
+Safe daily limit: *PKR 2,450* · 17 days to Thu 15 Oct
+Heads up: today is *PKR 5,350*, over the safe daily limit of *PKR 2,450*.
 
 you> goals
 *Goals*
 
-1. Friday — *PKR 5,000* — Fri 2 Oct (4 days) · daily *PKR 10,500*
-2. wedding — *PKR 3,000* — Thu 15 Oct (17 days) · daily *PKR 2,470.58*
+1. Friday — *PKR 5,000* — Fri 2 Oct (4 days)
+2. wedding — *PKR 3,000* — Thu 15 Oct (17 days)
 
 Reserved *PKR 8,000* · available *PKR 36,650*
+Safe daily limit: *PKR 2,450* · 17 days to Thu 15 Oct
 
-you> report
-*September 2026*
-Total *PKR 5,350*
-
-Groceries — *PKR 3,400* (64%)
-Transport — *PKR 1,200* (22%)
-Food — *PKR 750* (14%)
-
-Top:
-· *PKR 3,400* groceries
-· *PKR 1,200* petrol · Transport
-· *PKR 500* lunch · Food
-· *PKR 250* tea · Food
+you> balance
+Balance: *PKR 44,650*
+Reserved: *PKR 8,000*
+Available to spend: *PKR 36,650*
+Safe daily limit: *PKR 2,450* · 17 days to Thu 15 Oct
+Today spent: *PKR 5,350*
+Heads up: today is *PKR 5,350*, over the safe daily limit of *PKR 2,450*.
 
 you> advice
 *Advice*
 
 Balance *PKR 44,650* · available *PKR 36,650*.
-7-day burn is *PKR 764.29* a day. At that pace, available money lasts about *47* days.
+7-day burn is *PKR 764* a day. At that pace, available money lasts about *47* days.
 Biggest this month: *Groceries* — *PKR 3,400* (64% of spending).
 Groceries is a large share. Check whether that was planned.
-Today *PKR 5,350* is within the safe daily limit of *PKR 10,500* until Fri 2 Oct.
+Today *PKR 5,350* is over the safe daily limit of *PKR 2,450* until Thu 15 Oct.
 Friday is reserved for Fri 2 Oct (4 days).
 wedding is reserved for Thu 15 Oct (17 days).
 
@@ -105,8 +102,8 @@ clothes
 
 Left: *PKR 38,650*
 Available: *PKR 30,650* (reserved *PKR 8,000*)
-Safe per day until Fri 2 Oct: *PKR 10,500* · 4 days
-Heads up: today is *PKR 11,350*, over the safe daily limit of *PKR 10,500*.
+Safe daily limit: *PKR 2,097* · 17 days to Thu 15 Oct
+Heads up: today is *PKR 11,350*, over the safe daily limit of *PKR 2,097*.
 
 you> undo
 Undid Shopping *PKR 6,000* (clothes).
@@ -115,11 +112,11 @@ Balance: *PKR 44,650*.
 you> history
 *Recent*
 
-1. Food · PKR 250 · tea · 28 Sept, 04:10
-2. Groceries · PKR 3,400 · groceries · 28 Sept, 04:10
-3. Transport · PKR 1,200 · petrol · 28 Sept, 04:10
-4. Food · PKR 500 · lunch · 28 Sept, 04:10
-5. Set funds · PKR 50,000 · 28 Sept, 04:10
+1. Food · PKR 250 · tea · 28 Sept, 04:18
+2. Groceries · PKR 3,400 · groceries · 28 Sept, 04:18
+3. Transport · PKR 1,200 · petrol · 28 Sept, 04:18
+4. Food · PKR 500 · lunch · 28 Sept, 04:18
+5. Set funds · PKR 50,000 · 28 Sept, 04:18
 
 you> delete goal 2
 Removed goal 2 (wedding, *PKR 3,000*).
@@ -154,7 +151,15 @@ Amounts accept commas and a `k` suffix (`50,000`, `50k`). Dates accept weekdays,
 
 `funds 50000` means "this is what I have now". It replaces the balance.
 
-A savings goal is set aside immediately. Available cash is the balance minus every reserve. The safe daily limit is that free cash, including what you already spent today, divided by the days until the soonest goal. Logging another expense keeps the same cap. Expense replies warn when today's total is over that cap.
+A savings goal is set aside until its date. Available cash is the balance minus every reserve. The safe daily limit is one number, from `planGoals`, and goal replies, expense warnings, balance, and advice all print that number.
+
+For each goal, hold back every reserve due on that date or later (you may use an earlier reserve only after its date). Divide what is left by the days until the goal and round down to a whole rupee. The safe daily limit is the smallest of those caps. Spending that much every day never spends a reserve early. Money already spent today is checked against that same cap. If today is still under it, the reply also says how much of the cap is left today. PKR amounts are whole rupees.
+
+In the sample, after `save 5000 for Friday` the spendable money is 44,650 − 5,000 = 39,650 over 4 days. 39,650 / 4 rounds down to 9,912, and 9,912 × 4 = 39,648, which leaves the 5,000 reserve. Today already used 5,350 of the cap, so 4,562 is left today.
+
+After the wedding goal, Friday's own cap is (44,650 − 8,000) / 4 = 9,162. The wedding cap is (44,650 − 3,000) / 17 = 2,450, because the Friday money can be spent after Fri 2 Oct. The safe daily limit is the smaller one, 2,450. 2,450 × 17 = 41,650, the balance minus the 3,000 that must still be there on 15 Oct. Today's 5,350 is over 2,450, so the goal reply, `goals`, `balance`, and `advice` all say 2,450.
+
+`6000 clothes` lowers the balance to 38,650. The same function then returns (38,650 − 3,000) / 17 rounded down to 2,097, and the warning uses 2,097.
 
 Advice is always computed from those figures: 7-day burn, how long available cash lasts at that pace, the biggest category this month, and whether each goal is covered. An OpenAI key only rewrites that text, and the rewrite is kept only when every number is still there.
 

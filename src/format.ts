@@ -1,13 +1,14 @@
-import { roundMoney } from './money.js';
+import { currencyUnit, quantize } from './money.js';
 
 export function formatMoney(amount: number, currency: string): string {
-  const rounded = roundMoney(amount);
+  const rounded = quantize(amount, currency);
   const negative = rounded < 0;
   const abs = Math.abs(rounded);
-  const cents = Math.round(abs * 100) % 100;
+  const unit = currencyUnit(currency);
+  const whole = unit >= 1 || Math.abs(abs - Math.trunc(abs)) < 1e-9;
   const formatted = new Intl.NumberFormat('en-US', {
-    minimumFractionDigits: cents === 0 ? 0 : 2,
-    maximumFractionDigits: 2,
+    minimumFractionDigits: whole ? 0 : 2,
+    maximumFractionDigits: whole ? 0 : 2,
   }).format(abs);
   return `${currency} ${negative ? '-' : ''}${formatted}`;
 }

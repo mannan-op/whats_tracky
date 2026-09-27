@@ -1,5 +1,6 @@
 import type { PlannedGoal } from './calc.js';
 import { bold, formatMoney, lines } from './format.js';
+import { quantize } from './money.js';
 
 export interface AdviceInput {
   currency: string;
@@ -31,18 +32,24 @@ export function ruleAdvice(input: AdviceInput): string {
     );
   }
 
-  parts.push(`Balance ${money(input.balance)} · available ${money(input.available)}.`);
+  const available = quantize(input.available, input.currency);
+  const burn = quantize(input.burn7, input.currency);
+  parts.push(`Balance ${money(input.balance)} · available ${money(available)}.`);
 
-  if (input.burn7 <= 0) {
+  if (burn <= 0) {
     parts.push('No spending in the last 7 days, so there is no burn rate yet.');
-  } else if (input.available <= 0) {
+  } else if (available <= 0) {
     parts.push(
-      `7-day burn is ${money(input.burn7)} a day. Available to spend is ${money(input.available)}, so nothing is left outside your reserves.`,
+      `7-day burn is ${money(burn)} a day. Available to spend is ${money(available)}, so nothing is left outside your reserves.`,
     );
   } else {
-    const runway = Math.floor(input.available / input.burn7);
+    const runway = Math.floor(available / burn);
+    const above =
+      input.safeDailyLimit !== null && burn > input.safeDailyLimit
+        ? ` That is above the safe daily limit of ${money(input.safeDailyLimit)}.`
+        : '';
     parts.push(
-      `7-day burn is ${money(input.burn7)} a day. At that pace, available money lasts about ${bold(String(runway))} ${dayWord(runway)}.`,
+      `7-day burn is ${money(burn)} a day. At that pace, available money lasts about ${bold(String(runway))} ${dayWord(runway)}.${above}`,
     );
   }
 
@@ -77,10 +84,6 @@ export function ruleAdvice(input: AdviceInput): string {
       );
     } else if (goal.overdue) {
       parts.push(`${goal.label} was due ${when}. It stays reserved until you delete it.`);
-    } else if (input.burn7 > goal.dailyLimit + 0.001 && goal.daysUntil > 0) {
-      parts.push(
-        `${goal.label}: keep daily spending near ${money(goal.dailyLimit)} to still have it on ${when}. Your burn is higher.`,
-      );
     } else if (goal.dueToday) {
       parts.push(`${goal.label} is due today. Leave ${money(goal.amount)} untouched.`);
     } else {
