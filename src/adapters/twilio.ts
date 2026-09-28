@@ -50,7 +50,7 @@ export async function handleTwilio(req: Request, res: Response, deps: ServerDeps
   }
 
   const nowIso = (deps.now?.() ?? new Date()).toISOString();
-  if (messageId && !deps.claimMessage(messageId, nowIso)) {
+  if (messageId && !(await deps.claimMessage(messageId, nowIso))) {
     res.status(200).type('text/xml').send(emptyTwiml());
     return;
   }
@@ -59,7 +59,7 @@ export async function handleTwilio(req: Request, res: Response, deps: ServerDeps
     const reply = await deps.handle(from, body);
     res.status(200).type('text/xml').send(twiml(reply));
   } catch (error) {
-    if (messageId) deps.releaseMessage(messageId);
+    if (messageId) await deps.releaseMessage(messageId);
     throw error;
   }
 }

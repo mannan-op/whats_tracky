@@ -78,6 +78,12 @@ export function handleMetaVerify(req: Request, res: Response, config: AppConfig)
   res.sendStatus(403);
 }
 
+interface AcceptedMessage {
+  from: string;
+  id?: string;
+  body: string;
+}
+
 export async function handleMetaPost(req: RawRequest, res: Response, deps: ServerDeps): Promise<void> {
   const secret = deps.config.metaAppSecret;
   if (secret) {
@@ -88,21 +94,32 @@ export async function handleMetaPost(req: RawRequest, res: Response, deps: Serve
     }
   }
 
-  const messages = readMetaMessages(req.body);
   const nowIso = (deps.now?.() ?? new Date()).toISOString();
-  const send = deps.sendMetaText ?? ((to: string, body: string) => sendMetaText(deps.config, to, body));
-
-  for (const message of messages) {
-    if (message.type !== 'text' || !message.from || !message.text?.body?.trim()) continue;
-    if (message.id && !deps.claimMessage(message.id, nowIso)) continue;
-    try {
-      const reply = await deps.handle(message.from, message.text.body);
-      await send(message.from, reply);
-    } catch (error) {
-      if (message.id) deps.releaseMessage(message.id);
-      throw error;
-    }
+  const accepted: AcceptedMessage[] = [];
+  for (const message of readMetaMessages(req.body)) {
+    const body = message.text?.body?.trim();
+    if (message.type !== 'text' || !message.from || !body) continue;
+    if (message.id && !(await deps.claimMessage(message.id, nowIso))) continue;
+    accepted.push({ from: message.from, id: message.id, body });
   }
 
+  // Meta retries a webhook that is slow to acknowledge, which would log the same
+  // expense twice. The message id is claimed above, then this 200 is sent before
+  // the reply is built. Status callbacks have no messages array, so they stop here.
   res.sendStatus(200);
+
+  const send = deps.sendMetaText ?? ((to: string, body: string) => sendMetaText(deps.config, to, body));
+  for (const message of accepted) {
+    try {
+      const reply = await deps.handle(message.from, message.body);
+      try {
+        await send(message.from, reply);
+      } catch (error) {
+        console.error('meta reply failed', error instanceof Error ? error.message : error);
+      }
+    } catch (error) {
+      if (message.id) await deps.releaseMessage(message.id);
+      console.error('meta handling failed', error instanceof Error ? error.message : error);
+    }
+  }
 }

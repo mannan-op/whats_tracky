@@ -23,7 +23,7 @@ export function normalizeUserId(id: string): string {
 
 export async function handleMessage(userId: string, text: string, options: HandleOptions = {}): Promise<string> {
   const config = options.config ?? loadConfig();
-  const store = options.db ?? getStore(config.databasePath);
+  const store = options.db ?? (await getStore(config));
   const now = options.now ?? new Date();
   const llm = options.llm === undefined ? createLlm(config) : options.llm;
   const trimmed = text.trim();
