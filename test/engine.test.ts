@@ -5,7 +5,7 @@ import { say, testConfig, testStore, NOW } from './helpers.js';
 
 describe('engine balance, report, goals, undo, reset', () => {
   it('tracks funds, spending, a rebased set, and a category report', async () => {
-    const store = testStore();
+    const store = await testStore();
     expect(await say(store, 'funds 50000')).toContain('Funds set to *PKR 50,000*');
     expect(await say(store, '500 food lunch')).toContain('Logged *PKR 500* · Food');
     expect(await say(store, 'spent 1200 on petrol')).toContain('Transport');
@@ -25,7 +25,7 @@ describe('engine balance, report, goals, undo, reset', () => {
   });
 
   it('sets a goal aside and gives a safe daily limit', async () => {
-    const store = testStore();
+    const store = await testStore();
     await say(store, 'funds 44650');
     const friday = await say(store, 'save 5000 for Friday');
     expect(friday).toContain('Set aside *PKR 5,000*');
@@ -48,7 +48,7 @@ describe('engine balance, report, goals, undo, reset', () => {
   });
 
   it('warns when today exceeds the safe daily limit', async () => {
-    const store = testStore();
+    const store = await testStore();
     await say(store, 'funds 10000');
     await say(store, 'save 9000 for 2026-09-30');
     const reply = await say(store, '400 food lunch');
@@ -58,7 +58,7 @@ describe('engine balance, report, goals, undo, reset', () => {
   });
 
   it('undoes an expense, a goal, and a deleted goal', async () => {
-    const store = testStore();
+    const store = await testStore();
     await say(store, 'funds 1000');
     await say(store, '200 tea');
     expect(await say(store, 'balance')).toContain('*PKR 800*');
@@ -80,7 +80,7 @@ describe('engine balance, report, goals, undo, reset', () => {
   });
 
   it('requires YES before reset and keeps users apart', async () => {
-    const store = testStore();
+    const store = await testStore();
     await say(store, 'funds 1000');
     expect(await say(store, 'reset')).toContain('YES');
     expect(await say(store, 'balance')).toContain('*PKR 1,000*');
@@ -101,7 +101,7 @@ describe('engine balance, report, goals, undo, reset', () => {
   });
 
   it('shares a phone identity across whatsapp prefixes and falls back to the model only when needed', async () => {
-    const store = testStore();
+    const store = await testStore();
     const config = testConfig();
     await handleMessage('whatsapp:+15551234567', 'funds 800', {
       db: store,

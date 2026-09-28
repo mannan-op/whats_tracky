@@ -53,26 +53,34 @@ export function createApp(deps: ServerDeps): express.Express {
   return app;
 }
 
-export function startServer(): void {
+export async function startServer(): Promise<void> {
   const config = loadConfig();
-  const store = getStore(config.databasePath);
+  const store = await getStore(config);
   const app = createApp({
     config,
     handle: (userId, text) => handleMessage(userId, text, { config, db: store }),
     claimMessage: (messageId, nowIso) => store.claimMessage(messageId, nowIso),
     releaseMessage: (messageId) => store.releaseMessage(messageId),
   });
-  app.listen(config.port, '0.0.0.0', () => {
-    console.log(`whats-tracky listening on 0.0.0.0:${config.port}`);
-    console.log(`currency ${config.currency}, tz ${config.tz}, db ${config.databasePath}`);
-    console.log(`twilio signature checks ${config.twilioAuthToken ? 'on' : 'off'}`);
-    console.log(`twilio from ${config.twilioWhatsappFrom ?? 'unset'}`);
-    console.log(`meta replies ${config.metaAccessToken && config.metaPhoneNumberId ? 'on' : 'off'}`);
-    console.log(`openai fallback ${config.openaiApiKey ? 'on' : 'off'}`);
+  await new Promise<void>((resolve, reject) => {
+    const server = app.listen(config.port, '0.0.0.0', () => resolve());
+    server.on('error', reject);
   });
+  const database = config.tursoDatabaseUrl ? 'turso' : config.databasePath;
+  console.log(`whats-tracky listening on 0.0.0.0:${config.port}`);
+  console.log(`currency ${config.currency}, tz ${config.tz}, db ${database}`);
+  console.log(`twilio signature checks ${config.twilioAuthToken ? 'on' : 'off'}`);
+  console.log(`twilio from ${config.twilioWhatsappFrom ?? 'unset'}`);
+  console.log(`meta replies ${config.metaAccessToken && config.metaPhoneNumberId ? 'on' : 'off'}`);
+  console.log(`openai fallback ${config.openaiApiKey ? 'on' : 'off'}`);
 }
 
 const isDirectRun =
   process.argv[1] !== undefined && import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href;
 
-if (isDirectRun) startServer();
+if (isDirectRun) {
+  startServer().catch((error: unknown) => {
+    console.error(error instanceof Error ? error.message : error);
+    process.exit(1);
+  });
+}

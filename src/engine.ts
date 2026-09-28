@@ -33,9 +33,9 @@ function dayWord(days: number): string {
   return days === 1 ? 'day' : 'days';
 }
 
-function takeSnapshot(ctx: EngineContext, userId: string): Snapshot {
-  const ledger = ctx.store.listLedger(userId);
-  const goals = ctx.store.listGoals(userId);
+async function takeSnapshot(ctx: EngineContext, userId: string): Promise<Snapshot> {
+  const ledger = await ctx.store.listLedger(userId);
+  const goals = await ctx.store.listGoals(userId);
   const balance = computeBalance(ledger.map((entry) => ({ kind: entry.kind, amount: entry.amount })));
   const today = localDate(ctx.now.toISOString(), ctx.config.tz);
   const todaySpend = ledger
@@ -171,39 +171,44 @@ function readGoalPayload(payload: string): { id: number; amount: number; targetD
 export async function dispatch(userId: string, intent: Intent, ctx: EngineContext): Promise<string> {
   const { store, config } = ctx;
   const nowIso = ctx.now.toISOString();
-  store.ensureUser(userId, nowIso);
+  await store.ensureUser(userId, nowIso);
   const currency = config.currency;
 
-  if (store.isPendingReset(userId) && intent.type !== 'confirm' && intent.type !== 'cancel' && intent.type !== 'reset') {
-    store.setPendingReset(userId, false);
+  if (
+    (await store.isPendingReset(userId)) &&
+    intent.type !== 'confirm' &&
+    intent.type !== 'cancel' &&
+    intent.type !== 'reset'
+  ) {
+    await store.setPendingReset(userId, false);
   }
 
   switch (intent.type) {
     case 'help':
       return helpText(currency);
     case 'reset':
-      store.setPendingReset(userId, true);
+      await store.setPendingReset(userId, true);
       return lines('This deletes your funds, expenses, and goals.', `Reply ${bold('YES')} to confirm.`);
     case 'confirm':
-      if (!store.isPendingReset(userId)) return 'Nothing is waiting for confirmation.';
-      store.clearUser(userId);
+      if (!(await store.isPendingReset(userId))) return 'Nothing is waiting for confirmation.';
+      await store.clearUser(userId);
       return 'All cleared. Send `funds 50000` when you want to start again.';
     case 'cancel':
-      if (!store.isPendingReset(userId)) return 'Nothing to cancel.';
-      store.setPendingReset(userId, false);
+      if (!(await store.isPendingReset(userId))) return 'Nothing to cancel.';
+      await store.setPendingReset(userId, false);
       return 'Reset cancelled. Your budget is unchanged.';
     case 'undo':
       return undo(userId, ctx);
     case 'history':
       return history(userId, ctx);
     case 'goals':
-      return goalsReply(takeSnapshot(ctx, userId), currency, config.tz);
+      return goalsReply(await takeSnapshot(ctx, userId), currency, config.tz);
     case 'delete_goal':
       return deleteGoal(userId, intent.index, ctx);
     case 'advice':
       return advise(userId, ctx);
     case 'balance':
-      return balanceReply(takeSnapshot(ctx, userId), currency, config.tz);
+      return balanceReply(await takeSnapshot(ctx, userId), currency, config.tz);
     case 'report':
       return reportReply(userId, intent.period, ctx);
     case 'set_funds':
@@ -221,10 +226,15 @@ export async function dispatch(userId: string, intent: Intent, ctx: EngineContex
   }
 }
 
-function mutateFunds(userId: string, kind: 'set_funds' | 'add_funds', amount: number, ctx: EngineContext): string {
+async function mutateFunds(
+  userId: string,
+  kind: 'set_funds' | 'add_funds',
+  amount: number,
+  ctx: EngineContext,
+): Promise<string> {
   const nowIso = ctx.now.toISOString();
-  ctx.store.transaction(() => {
-    const row = ctx.store.insertLedger({
+  await ctx.store.transaction(async () => {
+    const row = await ctx.store.insertLedger({
       userId,
       kind,
       amount,
@@ -232,9 +242,9 @@ function mutateFunds(userId: string, kind: 'set_funds' | 'add_funds', amount: nu
       note: null,
       createdAt: nowIso,
     });
-    ctx.store.pushUndo(userId, 'delete_ledger', { id: row.id }, nowIso);
+    await ctx.store.pushUndo(userId, 'delete_ledger', { id: row.id }, nowIso);
   });
-  const snapshot = takeSnapshot(ctx, userId);
+  const snapshot = await takeSnapshot(ctx, userId);
   if (kind === 'set_funds') {
     return lines(`Funds set to ${money(amount, ctx.config.currency)}.`, 'That is your balance now.');
   }
@@ -244,10 +254,16 @@ function mutateFunds(userId: string, kind: 'set_funds' | 'add_funds', amount: nu
   );
 }
 
-function addExpense(userId: string, amount: number, note: string, category: Category, ctx: EngineContext): string {
+async function addExpense(
+  userId: string,
+  amount: number,
+  note: string,
+  category: Category,
+  ctx: EngineContext,
+): Promise<string> {
   const nowIso = ctx.now.toISOString();
-  ctx.store.transaction(() => {
-    const row = ctx.store.insertLedger({
+  await ctx.store.transaction(async () => {
+    const row = await ctx.store.insertLedger({
       userId,
       kind: 'expense',
       amount,
@@ -255,9 +271,9 @@ function addExpense(userId: string, amount: number, note: string, category: Cate
       note,
       createdAt: nowIso,
     });
-    ctx.store.pushUndo(userId, 'delete_ledger', { id: row.id }, nowIso);
+    await ctx.store.pushUndo(userId, 'delete_ledger', { id: row.id }, nowIso);
   });
-  const snapshot = takeSnapshot(ctx, userId);
+  const snapshot = await takeSnapshot(ctx, userId);
   return lines(
     `Logged ${money(amount, ctx.config.currency)} · ${categoryLabel(category)}`,
     note,
@@ -266,19 +282,25 @@ function addExpense(userId: string, amount: number, note: string, category: Cate
   );
 }
 
-function addGoal(userId: string, amount: number, targetDate: string, label: string, ctx: EngineContext): string {
+async function addGoal(
+  userId: string,
+  amount: number,
+  targetDate: string,
+  label: string,
+  ctx: EngineContext,
+): Promise<string> {
   const nowIso = ctx.now.toISOString();
-  ctx.store.transaction(() => {
-    const row = ctx.store.insertGoal({
+  await ctx.store.transaction(async () => {
+    const row = await ctx.store.insertGoal({
       userId,
       amount,
       targetDate,
       label,
       createdAt: nowIso,
     });
-    ctx.store.pushUndo(userId, 'delete_goal', { id: row.id }, nowIso);
+    await ctx.store.pushUndo(userId, 'delete_goal', { id: row.id }, nowIso);
   });
-  const snapshot = takeSnapshot(ctx, userId);
+  const snapshot = await takeSnapshot(ctx, userId);
   const planned = snapshot.plan.goals.find((goal) => goal.targetDate === targetDate && goal.label === label);
   const when = formatPrettyDate(targetDate, ctx.config.tz);
   const currency = ctx.config.currency;
@@ -322,8 +344,8 @@ function goalsReply(snapshot: Snapshot, currency: string, timeZone: string): str
   );
 }
 
-function deleteGoal(userId: string, index: number, ctx: EngineContext): string {
-  const goals = ctx.store.listGoals(userId);
+async function deleteGoal(userId: string, index: number, ctx: EngineContext): Promise<string> {
+  const goals = await ctx.store.listGoals(userId);
   const goal = goals[index - 1];
   if (!goal) {
     return goals.length === 0
@@ -331,9 +353,9 @@ function deleteGoal(userId: string, index: number, ctx: EngineContext): string {
       : `No goal ${index}. Send \`goals\` to see the list.`;
   }
   const nowIso = ctx.now.toISOString();
-  ctx.store.transaction(() => {
-    ctx.store.deleteGoal(goal.id, userId);
-    ctx.store.pushUndo(
+  await ctx.store.transaction(async () => {
+    await ctx.store.deleteGoal(goal.id, userId);
+    await ctx.store.pushUndo(
       userId,
       'insert_goal',
       { id: goal.id, amount: goal.amount, targetDate: goal.targetDate, label: goal.label },
@@ -361,8 +383,8 @@ function balanceReply(snapshot: Snapshot, currency: string, timeZone: string): s
   return parts.join('\n');
 }
 
-function reportReply(userId: string, period: Period, ctx: EngineContext): string {
-  const snapshot = takeSnapshot(ctx, userId);
+async function reportReply(userId: string, period: Period, ctx: EngineContext): Promise<string> {
+  const snapshot = await takeSnapshot(ctx, userId);
   const start = periodStart(period, snapshot.today);
   const end = period === 'all' ? '9999-12-31' : snapshot.today;
   const expenses = snapshot.ledger
@@ -394,7 +416,7 @@ function reportReply(userId: string, period: Period, ctx: EngineContext): string
 }
 
 async function advise(userId: string, ctx: EngineContext): Promise<string> {
-  const snapshot = takeSnapshot(ctx, userId);
+  const snapshot = await takeSnapshot(ctx, userId);
   const start = addDays(snapshot.today, -6);
   const monthStart = periodStart('month', snapshot.today);
   const expenses = snapshot.ledger
@@ -431,8 +453,8 @@ async function advise(userId: string, ctx: EngineContext): Promise<string> {
   return text;
 }
 
-function history(userId: string, ctx: EngineContext): string {
-  const ledger = ctx.store.listLedger(userId);
+async function history(userId: string, ctx: EngineContext): Promise<string> {
+  const ledger = await ctx.store.listLedger(userId);
   if (ledger.length === 0) return 'No history yet. Try `funds 50000` or `500 lunch`.';
   const recent = [...ledger].reverse().slice(0, 10);
   const rows = recent.map((entry, index) => {
@@ -446,16 +468,16 @@ function history(userId: string, ctx: EngineContext): string {
   return lines('*Recent*', '', ...rows);
 }
 
-function undo(userId: string, ctx: EngineContext): string {
-  const record = ctx.store.popUndo(userId);
+async function undo(userId: string, ctx: EngineContext): Promise<string> {
+  const record = await ctx.store.popUndo(userId);
   if (!record) return 'Nothing to undo.';
   const currency = ctx.config.currency;
   switch (record.op) {
     case 'delete_ledger': {
       const id = readId(record.payload);
-      const row = id === null ? null : ctx.store.deleteLedger(id, userId);
+      const row = id === null ? null : await ctx.store.deleteLedger(id, userId);
       if (!row) return 'Nothing to undo.';
-      const snapshot = takeSnapshot(ctx, userId);
+      const snapshot = await takeSnapshot(ctx, userId);
       const what =
         row.kind === 'expense'
           ? `Undid ${categoryLabel(row.category ?? 'other')} ${money(row.amount, currency)} (${row.note ?? 'expense'}).`
@@ -466,14 +488,14 @@ function undo(userId: string, ctx: EngineContext): string {
     }
     case 'delete_goal': {
       const id = readId(record.payload);
-      const row = id === null ? null : ctx.store.deleteGoal(id, userId);
+      const row = id === null ? null : await ctx.store.deleteGoal(id, userId);
       if (!row) return 'Nothing to undo.';
       return `Undid saving ${money(row.amount, currency)} for ${row.label}.`;
     }
     case 'insert_goal': {
       const goal = readGoalPayload(record.payload);
       if (!goal) return 'Nothing to undo.';
-      ctx.store.insertGoal({
+      await ctx.store.insertGoal({
         id: goal.id,
         userId,
         amount: goal.amount,

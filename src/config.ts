@@ -4,6 +4,8 @@ export interface AppConfig {
   currency: string;
   tz: string;
   databasePath: string;
+  tursoDatabaseUrl?: string;
+  tursoAuthToken?: string;
   port: number;
   publicUrl?: string;
   twilioAuthToken?: string;
@@ -30,6 +32,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     currency: (env.CURRENCY ?? 'PKR').trim() || 'PKR',
     tz: safeTimeZone((env.TZ ?? 'Asia/Karachi').trim() || 'Asia/Karachi'),
     databasePath: (env.DATABASE_PATH ?? './data/budget.db').trim() || './data/budget.db',
+    tursoDatabaseUrl: blankToUndefined(env.TURSO_DATABASE_URL),
+    tursoAuthToken: blankToUndefined(env.TURSO_AUTH_TOKEN),
     port: Number.isFinite(port) && port > 0 ? port : 3000,
     publicUrl: blankToUndefined(env.PUBLIC_URL)?.replace(/\/$/, ''),
     twilioAuthToken: blankToUndefined(env.TWILIO_AUTH_TOKEN),

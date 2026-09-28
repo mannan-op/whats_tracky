@@ -94,12 +94,12 @@ export async function handleMetaPost(req: RawRequest, res: Response, deps: Serve
 
   for (const message of messages) {
     if (message.type !== 'text' || !message.from || !message.text?.body?.trim()) continue;
-    if (message.id && !deps.claimMessage(message.id, nowIso)) continue;
+    if (message.id && !(await deps.claimMessage(message.id, nowIso))) continue;
     try {
       const reply = await deps.handle(message.from, message.text.body);
       await send(message.from, reply);
     } catch (error) {
-      if (message.id) deps.releaseMessage(message.id);
+      if (message.id) await deps.releaseMessage(message.id);
       throw error;
     }
   }

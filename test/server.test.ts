@@ -24,8 +24,8 @@ async function listen(app: ReturnType<typeof createApp>): Promise<string> {
   return `http://127.0.0.1:${address.port}`;
 }
 
-function appFor(config = testConfig()) {
-  const store = testStore();
+async function appFor(config = testConfig()) {
+  const store = await testStore();
   const sent: string[] = [];
   const app = createApp({
     config,
@@ -42,7 +42,7 @@ function appFor(config = testConfig()) {
 
 describe('http adapters', () => {
   it('answers health, Twilio sandbox posts, and Meta verification', async () => {
-    const { app, sent } = appFor(testConfig({ metaVerifyToken: 'secret', metaAppSecret: 'app-secret' }));
+    const { app, sent } = await appFor(testConfig({ metaVerifyToken: 'secret', metaAppSecret: 'app-secret' }));
     const base = await listen(app);
 
     const health = await fetch(`${base}/health`);
@@ -100,7 +100,7 @@ describe('http adapters', () => {
   });
 
   it('rejects a Twilio post when the signature does not match', async () => {
-    const { app } = appFor(testConfig({ twilioAuthToken: 'token', publicUrl: 'https://example.com' }));
+    const { app } = await appFor(testConfig({ twilioAuthToken: 'token', publicUrl: 'https://example.com' }));
     const base = await listen(app);
     const params = { From: 'whatsapp:+15551230000', Body: 'balance' };
     const bad = await fetch(`${base}/webhooks/twilio`, {

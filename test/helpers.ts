@@ -1,5 +1,5 @@
 import type { AppConfig } from '../src/config.js';
-import { openStore, type Store } from '../src/db.js';
+import { openSqliteStore, type Store } from '../src/db.js';
 import { handleMessage } from '../src/handleMessage.js';
 
 export const NOW = new Date('2026-09-27T12:00:00.000Z');
@@ -18,8 +18,8 @@ export function testConfig(overrides: Partial<AppConfig> = {}): AppConfig {
   };
 }
 
-export function testStore(): Store {
-  return openStore(':memory:');
+export function testStore(): Promise<Store> {
+  return Promise.resolve(openSqliteStore(':memory:'));
 }
 
 export async function say(store: Store, text: string, userId = 'alice'): Promise<string> {

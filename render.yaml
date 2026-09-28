@@ -1,26 +1,29 @@
 services:
   - type: web
     name: whats-tracky
-    runtime: docker
-    plan: starter
-    dockerfilePath: ./Dockerfile
+    runtime: node
+    plan: free
+    buildCommand: npm ci --include=dev && npm run build
+    startCommand: npm start
     healthCheckPath: /health
-    disk:
-      name: budget-data
-      mountPath: /data
-      sizeGB: 1
     envVars:
-      - key: DATABASE_PATH
-        value: /data/budget.db
+      - key: NODE_ENV
+        value: production
+      - key: NODE_VERSION
+        value: "22"
       - key: CURRENCY
         value: PKR
       - key: TZ
         value: Asia/Karachi
-      - key: NODE_ENV
-        value: production
-      - key: PUBLIC_URL
+      - key: TURSO_DATABASE_URL
+        sync: false
+      - key: TURSO_AUTH_TOKEN
         sync: false
       - key: TWILIO_AUTH_TOKEN
+        sync: false
+      - key: PUBLIC_URL
+        sync: false
+      - key: OPENAI_API_KEY
         sync: false
       - key: META_VERIFY_TOKEN
         sync: false
@@ -29,6 +32,4 @@ services:
       - key: META_PHONE_NUMBER_ID
         sync: false
       - key: META_APP_SECRET
-        sync: false
-      - key: OPENAI_API_KEY
         sync: false
