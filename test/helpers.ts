@@ -10,7 +10,7 @@ export function testConfig(overrides: Partial<AppConfig> = {}): AppConfig {
     tz: 'Asia/Karachi',
     databasePath: ':memory:',
     port: 0,
-    metaGraphVersion: 'v25.0',
+    metaGraphVersion: 'v26.0',
     openaiModel: 'gpt-4o-mini',
     openaiBaseUrl: 'https://api.openai.com/v1',
     cliUser: 'me',

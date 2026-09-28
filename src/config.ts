@@ -42,7 +42,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     metaAccessToken: blankToUndefined(env.META_ACCESS_TOKEN),
     metaPhoneNumberId: blankToUndefined(env.META_PHONE_NUMBER_ID),
     metaAppSecret: blankToUndefined(env.META_APP_SECRET),
-    metaGraphVersion: (env.META_GRAPH_VERSION ?? 'v25.0').trim() || 'v25.0',
+    metaGraphVersion: (env.META_GRAPH_VERSION ?? 'v26.0').trim() || 'v26.0',
     openaiApiKey: blankToUndefined(env.OPENAI_API_KEY),
     openaiModel: (env.OPENAI_MODEL ?? 'gpt-4o-mini').trim() || 'gpt-4o-mini',
     openaiBaseUrl: (env.OPENAI_BASE_URL ?? 'https://api.openai.com/v1').trim().replace(/\/$/, ''),

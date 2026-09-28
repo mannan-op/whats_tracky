@@ -5,8 +5,8 @@ A personal budget bot for WhatsApp. You set how much money you have, text each e
 The brain is one function, `handleMessage(userId, text) -> reply`. Three thin adapters sit on top of it:
 
 - a local CLI, so you can try it with no WhatsApp account
-- a Twilio WhatsApp sandbox webhook
-- a Meta WhatsApp Cloud API webhook
+- a Meta WhatsApp Cloud API webhook, which is the hosted path
+- a Twilio WhatsApp sandbox webhook, which is still supported
 
 It keeps a separate ledger for each phone number in a SQLite file, or in Turso when `TURSO_DATABASE_URL` is set. Categories, balances, and daily limits are deterministic. If `OPENAI_API_KEY` is set, messages the parser does not understand can be interpreted by a model, and `advice` can be rewritten in a warmer tone. With no key, every command still works.
 
@@ -220,20 +220,17 @@ This is the fastest way to use a real WhatsApp chat. The sandbox is free; your p
 
 ## Meta WhatsApp Cloud API
 
-1. In [Meta for Developers](https://developers.facebook.com/), create an app and add the WhatsApp product.
-2. On the API setup screen, copy the temporary access token, the phone number ID, and the test business number. Add your own mobile number as a recipient and confirm the code Meta sends.
-3. Choose a long random string and put it in `META_VERIFY_TOKEN`. Put the token and phone number ID in `META_ACCESS_TOKEN` and `META_PHONE_NUMBER_ID`. Put the app secret in `META_APP_SECRET` (App settings → Basic). That secret turns on `X-Hub-Signature-256` checks.
-4. Run `npm run dev` and expose port 3000 the same way as for Twilio. Set `PUBLIC_URL` to that origin.
-5. In the WhatsApp configuration, set the callback URL to `https://YOUR-ORIGIN/webhooks/meta` and the verify token to the same string as `META_VERIFY_TOKEN`. Subscribe to the **messages** field.
-6. Send a text to the test business number. The bot replies through `POST https://graph.facebook.com/v25.0/{PHONE_NUMBER_ID}/messages`. Override the version with `META_GRAPH_VERSION` if Meta has moved on.
+This is the transport used on Render. For a local trial, run `npm run dev`, expose port 3000, and use that HTTPS origin anywhere the deploy section says `https://<render-app>.onrender.com`. The full click-path, including the permanent token, is in **Render + Turso + Meta WhatsApp Cloud API** below.
 
-A temporary token expires in about a day. For a bot you leave running, create a system user token in Business Manager. Outside the 24-hour customer-care window, WhatsApp only accepts pre-approved template messages; this bot sends free-form replies, so it answers inside that window after the user texts first.
+Replies are `POST https://graph.facebook.com/v26.0/{PHONE_NUMBER_ID}/messages`. Override the version with `META_GRAPH_VERSION` if Meta has moved on. Outside the 24-hour customer-care window, WhatsApp only accepts pre-approved template messages; this bot sends free-form replies, so it answers inside that window after the user texts first.
 
-## Deploy free: Render + Turso + Twilio sandbox
+## Render + Turso + Meta WhatsApp Cloud API
 
 Render's free web service has an ephemeral disk and sleeps after about 15 minutes with no traffic. A SQLite file on that disk disappears on sleep or restart, so production data lives in a free [Turso](https://turso.tech) database (hosted libSQL). When `TURSO_DATABASE_URL` and `TURSO_AUTH_TOKEN` are set, the server uses Turso. When they are unset, the CLI and tests keep using the SQLite file at `DATABASE_PATH`. The budget engine talks to one storage interface either way. Both backends create the schema on startup.
 
-Twilio stops waiting after about 15 seconds. The Render start command is `npm start`, which runs the compiled `node dist/server.js`. The build compiles TypeScript once (`tsc`), so a cold start is a Node boot plus a short schema check.
+WhatsApp is Meta's Cloud API. The Twilio sandbox webhook remains in the server if you set `TWILIO_AUTH_TOKEN`, and it is not required for this deploy.
+
+Meta retries a webhook that is slow to answer. The handler checks `X-Hub-Signature-256`, claims the Meta message id, and returns `200` before it builds the reply. A retry of the same id does not log the expense again. Delivery receipts (`statuses`) are ignored. The Render start command is `npm start`, which runs the compiled `node dist/server.js`. The build compiles TypeScript once (`tsc`), so a cold start is a Node boot plus a short schema check.
 
 `GET /health` returns `{"ok":true}`.
 
@@ -274,24 +271,29 @@ The `--url` output is `TURSO_DATABASE_URL`. The token command prints `TURSO_AUTH
 
 1. Push this repo to GitHub.
 2. In the [Render dashboard](https://dashboard.render.com), choose **New → Blueprint** and connect the GitHub repo. Pick the branch that contains `render.yaml` (this branch until it is merged, then `main`).
-3. Render asks for every secret marked `sync: false`. Fill in the Turso URL and token, `TWILIO_AUTH_TOKEN`, and `PUBLIC_URL` once you know the hostname. `OPENAI_API_KEY` is optional. `CURRENCY` and `TZ` are already `PKR` and `Asia/Karachi`.
+3. Render asks for every secret marked `sync: false`. Fill in the Turso URL and token, the four `META_*` secrets below, and `PUBLIC_URL` once you know the hostname. `OPENAI_API_KEY` and `TWILIO_AUTH_TOKEN` are optional. `CURRENCY` is `PKR`, `TZ` is `Asia/Karachi`, and `META_GRAPH_VERSION` is `v26.0`.
 4. Or create a **Web Service** by hand: runtime **Node**, plan **Free**, build command `npm ci --include=dev && npm run build`, start command `npm start`, health check path `/health`, and the same environment variables. No Dockerfile is required.
 5. After the first deploy, open `https://<render-app>.onrender.com/health` and confirm `{"ok":true}`.
-6. Set `PUBLIC_URL` to `https://<render-app>.onrender.com` with no trailing slash. Twilio signature checks rebuild the webhook URL from this origin. Redeploy if you set it after the first boot.
+6. Set `PUBLIC_URL` to `https://<render-app>.onrender.com` with no trailing slash.
 
-### 3. Point the Twilio sandbox at Render
+### 3. Connect Meta WhatsApp Cloud API
 
-1. In the Twilio console, open **Messaging → Try it out → Send a WhatsApp message** (the sandbox).
-2. Under **Sandbox settings**, set **When a message comes in** to:
+1. Open [Meta for Developers](https://developers.facebook.com/) and create an app. Choose type **Business**.
+2. Add the **WhatsApp** product to the app.
+3. Open **WhatsApp → API Setup**. Meta provides a free test phone number. Copy its **Phone number ID** into `META_PHONE_NUMBER_ID`.
+4. Under **To**, add your own mobile number as a recipient and confirm the code WhatsApp sends you.
+5. In **App settings → Basic**, reveal the **App secret** and put it in `META_APP_SECRET`. The webhook rejects posts whose `X-Hub-Signature-256` does not match this secret.
+6. Invent a long random string and put it in `META_VERIFY_TOKEN`.
+7. Open **WhatsApp → Configuration**. Set the callback URL to:
 
 ```text
-https://<render-app>.onrender.com/webhooks/twilio
+https://<render-app>.onrender.com/webhooks/meta
 ```
 
-Method: **HTTP POST**. Save.
+Paste the same string as `META_VERIFY_TOKEN`. Meta sends a GET to that URL; the server echoes `hub.challenge` when the token matches. Subscribe to the **messages** field and save.
 
-3. From your phone, send the sandbox join message (`join <two-words>`) to the sandbox number.
-4. Send `funds 50000`, then `500 lunch`, then `balance`.
+8. Create a permanent token. The token shown on API Setup expires in about 24 hours. In [Business settings](https://business.facebook.com/settings), open **Users → System users**. Add a system user (Admin). Assign it the app and the WhatsApp account. Click **Generate token**, select the app, and enable **whatsapp_business_messaging** and **whatsapp_business_management**. Set the expiration to **Never**. Put that token in `META_ACCESS_TOKEN`.
+9. From your phone, send `funds 50000`, then `500 lunch`, then `balance` to the test business number.
 
 ### Environment variables for this deploy
 
@@ -299,9 +301,14 @@ Method: **HTTP POST**. Save.
 | --- | --- | --- |
 | `TURSO_DATABASE_URL` | yes | `libsql://...turso.io` from the dashboard or `turso db show --url` |
 | `TURSO_AUTH_TOKEN` | yes | read-write token from the dashboard or `turso db tokens create` |
-| `TWILIO_AUTH_TOKEN` | yes | Twilio account auth token (enables signature checks) |
+| `META_VERIFY_TOKEN` | yes | the string you invented for the webhook form |
+| `META_ACCESS_TOKEN` | yes | permanent system user token |
+| `META_PHONE_NUMBER_ID` | yes | phone number ID from API Setup |
+| `META_APP_SECRET` | yes | app secret from App settings → Basic |
 | `PUBLIC_URL` | yes | `https://<render-app>.onrender.com` |
 | `OPENAI_API_KEY` | no | only if you want the model fallback |
+| `TWILIO_AUTH_TOKEN` | no | only if you also point a Twilio sandbox at `/webhooks/twilio` |
+| `META_GRAPH_VERSION` | set by Blueprint | `v26.0` |
 | `CURRENCY` | set by Blueprint | `PKR` |
 | `TZ` | set by Blueprint | `Asia/Karachi` |
 
@@ -310,10 +317,10 @@ Render injects `PORT`. Leave `DATABASE_PATH` unset on this deploy; the Turso var
 Webhook URL format:
 
 ```text
-https://<render-app>.onrender.com/webhooks/twilio
+https://<render-app>.onrender.com/webhooks/meta
 ```
 
-POST. Replace `<render-app>` with the hostname Render assigns.
+Meta verifies with GET, then posts message notifications to the same URL. Replace `<render-app>` with the hostname Render assigns.
 
 ## Deploy
 
@@ -374,14 +381,14 @@ Every variable the process reads is listed in `.env.example`.
 | `DATABASE_PATH` | SQLite file used when `TURSO_DATABASE_URL` is unset. Default `./data/budget.db`. |
 | `CURRENCY` | Prefix on amounts. Default `PKR`. |
 | `TZ` | IANA timezone for "today" and weekdays. Default `Asia/Karachi`. A bad name falls back to UTC. |
-| `PUBLIC_URL` | Public origin with no trailing slash. Used to verify Twilio signatures. |
-| `TWILIO_AUTH_TOKEN` | Enables Twilio signature checks. |
-| `TWILIO_WHATSAPP_FROM` | Sandbox sender, for your own notes. |
+| `PUBLIC_URL` | Public origin with no trailing slash. Used to verify Twilio signatures when that webhook is enabled. |
 | `META_VERIFY_TOKEN` | String you invent; Meta sends it on the webhook verify GET. |
-| `META_ACCESS_TOKEN` | Token used to send replies. |
+| `META_ACCESS_TOKEN` | Permanent system user token used to send replies. |
 | `META_PHONE_NUMBER_ID` | WhatsApp phone number ID. |
-| `META_APP_SECRET` | Enables Meta signature checks. |
-| `META_GRAPH_VERSION` | Default `v25.0`. |
+| `META_APP_SECRET` | Validates `X-Hub-Signature-256` on incoming posts. |
+| `META_GRAPH_VERSION` | Default `v26.0`. |
+| `TWILIO_AUTH_TOKEN` | Optional. Enables Twilio signature checks. |
+| `TWILIO_WHATSAPP_FROM` | Optional sandbox sender, for your own notes. |
 | `OPENAI_API_KEY` | Optional. |
 | `OPENAI_MODEL` | Default `gpt-4o-mini`. |
 | `OPENAI_BASE_URL` | Default `https://api.openai.com/v1`. |
@@ -394,7 +401,7 @@ npm test
 npm run typecheck
 ```
 
-`npm test` covers the parser (funds, expenses, categories, reports, savings dates), the balance and report math, goal daily limits, undo, reset confirmation, the storage interface on local SQLite and on libSQL via a `file:` URL, and the Twilio and Meta HTTP adapters.
+`npm test` covers the parser (funds, expenses, categories, reports, savings dates), the balance and report math, goal daily limits, undo, reset confirmation, the storage interface on local SQLite and on libSQL via a `file:` URL, and the Twilio and Meta HTTP adapters (signature checks, status callbacks, and message-id dedupe).
 
 ## Layout
 
